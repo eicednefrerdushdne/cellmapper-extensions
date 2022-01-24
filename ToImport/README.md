@@ -1,1 +1,1 @@
-Place your cellmapper databases in this folder and run the `ProcessToImport.ps1` script.
+Place your cellmapper databases in this folder and run the `Import-CellmapperDatabases.ps1` script.
