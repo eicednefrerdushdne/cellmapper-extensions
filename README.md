@@ -2,13 +2,15 @@
 Some stuff to make mapping towers faster and easier.
 
 ## Theory of operation ##
-A website extension requests your own Cellmapper data from a tiny web server that runs on your computer. It then displays that data directly on the Cellmapper website.
+Triangulation is a much faster and more precise method of locating towers than relying solely on signal strength.
+
+This website extension requests your own Cellmapper data from a tiny web server that runs on your computer. It then displays that data directly on the Cellmapper website.
 
 
 ## Prerequisites ##
  - Windows computer
  - Google Chrome
- - [Tampermonkey extension](https://chrome.google.com/webstore/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo)
+ - [Tampermonkey Chrome extension](https://chrome.google.com/webstore/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo)
  - USB cable or rooted phone
  - General troubleshooting ability
  - Experience in PowerShell, Javascript, and SQLite will help significantly.
@@ -29,5 +31,5 @@ A website extension requests your own Cellmapper data from a tiny web server tha
 
 ## Basic Usage ##
 Click on a tower to display the LTE Timing Advance circles to quickly locate a tower.
-Here's a screenshot showing how this looks.
+Here's a screenshot of this in action.
 ![image](https://user-images.githubusercontent.com/98231591/150722696-c1c673e5-08a9-4949-a44e-fa6b4190d77c.png)
