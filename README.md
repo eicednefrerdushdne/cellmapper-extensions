@@ -29,3 +29,5 @@ A website extension requests your own Cellmapper data from a tiny web server tha
 
 ## Basic Usage ##
 Click on a tower to display the LTE Timing Advance circles to quickly locate a tower.
+Here's a screenshot showing how this looks.
+![image](https://user-images.githubusercontent.com/98231591/150722696-c1c673e5-08a9-4949-a44e-fa6b4190d77c.png)
