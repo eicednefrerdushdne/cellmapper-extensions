@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         CellMapper Circles
+// @name         CellMapper Extensions
 // @namespace    http://tampermonkey.net/
 // @version      0.1
-// @description  try to take over the world!
-// @author       You
+// @description  Some stuff to make mapping towers faster and easier.
+// @author       eicednefrerdushdne
 // @match        https://www.cellmapper.net/map*
 // @icon         https://www.google.com/s2/favicons?domain=cellmapper.net
 // @grant        none
