@@ -13,12 +13,10 @@ mkdir -force $tempDir
 Write-Host "Please connect your device and allow USB debugging."
 adb wait-for-device
 
-if (-not $path) {
+if (-not $Path) {
   $deviceName = & adb shell settings get global device_name
-  $Path = $deviceName + '.db'
-}
-else {
-  $Path = 'cellmapperdata.db'
+  $datetimestring = [datetime]::now.ToString('yyyy.MM.dd_hh.mm.ss')
+  $Path = [io.path]::Combine($psscriptroot, 'ToImport', ($deviceName + "_$datetimestring.db"))
 }
 
 Write-Host "Please approve the backup."
@@ -51,5 +49,4 @@ else {
     sqlite3 $path ".recover" | sqlite3 recovered.db
     Move-Item Recovered.db $path -Force
   }
-
 }
