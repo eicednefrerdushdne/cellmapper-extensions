@@ -36,7 +36,7 @@ function Get-PointsForCustomDB([string]$cmDB) {
       -1 as ARFCN,
       Signal as Signal,
       extraData from data
-      where System in ('LTE', 'NR')
+      where System in ('LTE', 'NR') and subSystem not in ('NSA')
       group by Latitude,Longitude,Altitude,CID
       having min(rowid)"
   
