@@ -279,6 +279,21 @@
 
     }
 
+    var improveGetTowerOverrideHistory = function(){
+        var func = window.getTowerOverrideHistory;
+        var functionContents = func.toString()
+        functionContents = functionContents.substr(functionContents.indexOf('{') + 1, functionContents.lastIndexOf('}') - functionContents.indexOf('{') - 1)
+
+
+
+        functionContents = functionContents.replace(`+ ")'>View</a></td>";`,
+                                          `+ ")'>(" + item['latitude'] + "," + item['longitude'] + ")</a><br /><a href='#' onclick='javascript:triggerTowerLocationConfirmation(\\"" + item['mcc'] + '", "' + item['mnc'] + '", "' + item['rat'] + '", "' + item['lac'] + '", "' + item['base'] + '", "' + item['latitude'] + '", "' + item['longitude'] + '"' + ")'>Restore this Location</a></td>";`);
+
+        var newfunc = new Function('inMCC', 'inMNC', 'inSystem', 'inLAC', 'inBase', 'inOffset', functionContents);
+        window.getTowerOverrideHistory = newfunc;
+
+    }
+
     window.togglingShowMineOnly = false;
     var fixtoggleshowMineOnly = function() {
         var func = window.toggleshowMineOnly;
@@ -349,6 +364,15 @@
 
         var newfunc = new Function(functionContents);
         window.toggleShowUnverifiedOnly = newfunc;
+
+    }
+
+    window.triggerTowerLocationConfirmation = function triggerTowerLocationConfirmation(inMCC, inMNC, inSystem, inLAC, inBase, latitude, longitude) {
+        var tower = window.Towers.find(t => {return t.get('base') == inBase && t.get('MCC') == inMCC && t.get('MNC') == inMNC && t.get('system') == inSystem;});
+
+        if(tower) {
+            handleTowerMove(tower, latitude, longitude);
+        }
 
     }
     window.onlyPrimaryTowers = false;
@@ -488,6 +512,11 @@
 
     waitForTrue(function() {return window.refreshTowers !== undefined},
                 function() {fixRefreshTowers();});
+
+    waitForTrue(function() {return window.getTowerOverrideHistory !== undefined},
+                function() {improveGetTowerOverrideHistory();});
+
+
 
     waitForTrue(function() {return $("#accountTable i.fa.caretIcon").length == 1},
                 function() {
