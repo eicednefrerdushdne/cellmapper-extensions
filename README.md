@@ -2,7 +2,7 @@
 Some stuff to make mapping towers faster and easier.
 
 ## Theory of operation ##
-Triangulation is a much faster and more precise method of locating towers than relying solely on signal strength. LTE measures the distance to the tower as part the protocol, and we can use this data to quickly estimate the tower's location.
+[Multilateration](https://en.wikipedia.org/wiki/Multilateration) is a much faster and more precise method of locating towers than relying solely on signal strength. LTE measures the distance to the tower as part the protocol, and we can use this data to quickly estimate the tower's location.
 
 This website extension requests your own Cellmapper data from a tiny web server that runs on your computer. It then displays that data directly on the Cellmapper website.
 
