@@ -607,5 +607,20 @@
         window.togglingShowUnverifiedOnly = window.togglingTrails = false;
     });
 
+function addGlobalStyle(css) {
+    var head, style;
+    head = document.getElementsByTagName('head')[0];
+    if (!head) { return; }
+    style = document.createElement('style');
+    style.type = 'text/css';
+    style.innerHTML = css.replace(/;/g, ' !important;');
+    head.appendChild(style);
+}
+addGlobalStyle(`
+@media (min-width: 576px) {
+    .modal-dialog {
+        max-width:800px;
+    }
+`);
 
 })();
