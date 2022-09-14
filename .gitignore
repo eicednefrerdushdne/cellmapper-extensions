@@ -1,3 +1,5 @@
 kmls/
 cellmapper.dbe
 log.txt
+/ToImport/*_lastDownloaded.txt
+/ToImport/Imported/
