@@ -17,8 +17,10 @@ if (-not $Path) {
   $deviceName = & adb shell settings get global device_name
   $datetimestring = [datetime]::now.ToString('yyyy.MM.dd_hh.mm.ss')
   $Path = [io.path]::Combine($psscriptroot, 'ToImport', ($deviceName + "_$datetimestring.db"))
+  $lastDownloadedPath = [io.path]::Combine($psscriptroot, 'ToImport', ($deviceName + "_lastDownloaded.txt"))
 }
 
+$thisDownloaded = [datetime]::now
 Write-Host "Please approve the backup."
 adb backup -f "$tempFile" -noapk cellmapper.net.cellmapper
 
@@ -44,9 +46,31 @@ if ((get-command sqlite3).CommandType -ne 'Application') {
   exit
 }
 else {
+  # Repair database errors which are common
+  Write-Output "Checking for database errors..."
   $output = sqlite3 $path "pragma integrity_check" 2>&1
   if ($output | where-object { $_ -is [System.Management.Automation.ErrorRecord] }) {
+    Write-Output "Repairing database errors"
     sqlite3 $path ".recover" | sqlite3 recovered.db
     Move-Item Recovered.db $path -Force
   }
+
+  # Remove data that was previously downloaded
+  if (Test-Path $lastDownloadedPath) {
+    $lastDownloadedContent = Get-Content -Raw $lastDownloadedPath
+    if ([datetime]::TryParse($lastDownloadedContent, [ref]$lastDownloaded)) {
+      if ($lastDownloaded -is [datetime]) {
+        sqlite3 $path "delete from data where date < '$($lastDownloaded.ToUniversalTime().ToString('o').Replace("T"," "))'"
+      }
+    }
+  }
+
+  # Remove non-LTE points
+  sqlite3 $path "delete from data where system <> 'LTE'"
+
+  # Compact the database
+  sqlite3 $path "vacuum main"
+
+  # If we've reached this point, it was likely successful, so save the downloaded date to use next time
+  $thisDownloaded.ToUniversalTime().ToString('o') | Set-Content $lastDownloadedPath
 }
