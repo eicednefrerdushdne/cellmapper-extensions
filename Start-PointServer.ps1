@@ -89,15 +89,27 @@ $GLOBAL:htmlcontents = @{
     return ConvertTo-Json $enbs
 
   }
-  '^GET /enb/\d+/\d+/\d+$'                 = {
+  '^GET /enb/\d+/\d+/\d+(-\d+)?$'                 = {
     param (
       [System.Net.HttpListenerRequest]
       $request
     )
-    $m = $request.Url.LocalPath -match '^/enb/(?<mcc>\d+)/(?<mnc>\d+)/(?<enb>\d+)$'
+    $m = $request.Url.LocalPath -match '^/enb/(?<mcc>\d+)/(?<mnc>\d+)/(?<enb>\d+)(-(?<cid>\d+))?$'
 
-    Write-Host "Retrieving points for $($matches.mcc)-$($matches.mnc) eNB $($matches.enb)"
+    if($matches.cid){
+      Write-Host "Retrieving points for $($matches.mcc)-$($matches.mnc) eNB $($matches.enb) cid $($matches.cid)"
+    } else {
+      Write-Host "Retrieving points for $($matches.mcc)-$($matches.mnc) eNB $($matches.enb)"
+    }
     $points = @(Get-eNBPoints -Path $customDBPath -enb $matches.enb -mcc $matches.mcc -mnc $matches.mnc)
+    if($matches.mcc -eq 310 -and $matches.mnc -eq 120) {
+      $points += @(Get-eNBPoints -Path $customDBPath -enb $matches.enb -mcc 312 -mnc 250)
+    }
+
+    if($matches.cid){
+      $cid = [int]$matches.cid
+      $points = [System.Collections.ArrayList]@($points | where-object {($_.CellID -band 255) -eq $cid})
+    }
 
     $alwaysKeepPoints = [System.Collections.ArrayList]@($points | Where-Object { $_.TAMeters -le 150 })
     $filterPoints = [System.Collections.ArrayList]@($points | Where-Object { $_.TAMeters -gt 150 })
@@ -132,8 +144,8 @@ $GLOBAL:htmlcontents = @{
       if ($requestJson.mnc -isnot [int]) {
         throw 'mnc was not an int'
       }
-      if ($requestJson.enb -isnot [int]) {
-        throw 'eNB was not an int'
+      if ($requestJson.enb -isnot [string]) {
+        throw 'eNB was not a string'
       }
       if ($requestJson.latitude -isnot [decimal]) {
         throw 'latitude was not a decimal'
@@ -154,7 +166,7 @@ $GLOBAL:htmlcontents = @{
     Write-Host "Opening Google Earth for eNB $($requestJson.enb)"
     mkdir "$PSScriptRoot\kmls" -force
     $filename = "$PSScriptRoot\kmls\tower$($requestJson.mcc)-$($requestJson.mnc)-$($requestJson.enb).kml"
-    Write-Host "Running & .\Create-CellmapperKML.ps1 -mcc $($requestJson.mcc) -mnc $($requestJson.mnc) -eNB $($requestJson.enb) -filename '$filename' -noLines"
+    Write-Host "Running & .\Create-CellmapperKML.ps1 -mcc $($requestJson.mcc) -mnc $($requestJson.mnc) -eNB '$($requestJson.enb)' -filename '$filename' -noLines"
     . .\Create-CellmapperKML.ps1 -mcc $requestJson.mcc -mnc $requestJson.mnc -eNB $requestJson.enb -latitude $requestJson.Latitude -longitude $requestJson.Longitude -verified $requestJson.verified -filename $filename -noLines
     Start-Process $filename
 
