@@ -7,8 +7,9 @@ param (
 
 $tempDir = Join-Path $env:TEMP ([System.IO.Path]::GetRandomFileName())
 $tempFile = Join-Path $tempDir cellmapper.ab
-$temptar = Join-Path $tempDir 'cellmapper.tar.gz'
-mkdir -force $tempDir
+$abuexe = [io.path]::Combine($psscriptroot, 'abu.exe')
+$abuExtractDir = [io.path]::Combine($tempdir, 'extracted')
+mkdir -force $abuExtractDir
 
 Write-Host "Please connect your device and allow USB debugging."
 adb wait-for-device
@@ -24,20 +25,18 @@ $thisDownloaded = [datetime]::now
 Write-Host "Please approve the backup."
 adb backup -f "$tempFile" -noapk cellmapper.net.cellmapper
 
-$infile = [System.IO.File]::OpenRead($tempFile)
-$infile.Seek(24, [System.IO.SeekOrigin]::Begin)
+$result = & $abuexe "$tempFile" --unpack "$abuExtractDir" 2>&1
 
-$header = @(0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00)
-$outfile = [System.IO.File]::OpenWrite($temptar)
-$outfile.Write($header, 0, $header.Length)
+if($result -is [System.Management.Automation.ErrorRecord]){
+  if($result.Exception.Message -eq 'The backup is encrypted but no password was provided') {
+    $result = & $abuexe --password password "$tempFile" --unpack "$abuExtractDir" 2>&1
+    if($result -is [System.Management.Automation.ErrorRecord] -and $result.Exception.Message -eq 'Wrong password'){
+      throw "Please run adb backup either with no password or with the password set to `password` (excluding quotes)."
+    }
+  }
+}
 
-$infile.CopyTo($outfile)
-$infile.Close()
-$outfile.Close()
-
-tar -zxvf "$temptar" -C "$tempdir" apps/cellmapper.net.cellmapper/db/cellmapperdata.db
-
-Move-Item (Join-Path $tempDir apps/cellmapper.net.cellmapper/db/cellmapperdata.db) $Path -Force
+Move-Item (Join-Path $abuExtractDir apps/cellmapper.net.cellmapper/db/cellmapperdata.db) $Path -Force
 
 Remove-Item $tempDir -Recurse -force
 
@@ -58,6 +57,7 @@ else {
   # Remove data that was previously downloaded
   if (Test-Path $lastDownloadedPath) {
     $lastDownloadedContent = Get-Content -Raw $lastDownloadedPath
+    [datetime]$lastDownloaded = [datetime]::MinValue
     if ([datetime]::TryParse($lastDownloadedContent, [ref]$lastDownloaded)) {
       if ($lastDownloaded -is [datetime]) {
         sqlite3 $path "delete from data where date < '$($lastDownloaded.ToUniversalTime().ToString('o').Replace("T"," "))'"
