@@ -1,9 +1,9 @@
 [CmdletBinding()]
 param (
-  [int]$eNB = 894009,
-  $filename = '894009.kml',
-  [int]$mcc,
-  [int]$mnc,
+  [string]$eNB = '',
+  $filename = '.kml',
+  [int]$mcc = 310,
+  [int]$mnc = 260,
   [decimal]$latitude,
   [decimal]$longitude,
   [bool]$verified,
@@ -28,12 +28,28 @@ Add-Type -AssemblyName 'system.drawing'
 
 
 Write-Host "Reading DB"
+$enbString = $enb
+if ($enb -match '^(?<enb>\d+)(-(?<cid>\d+))?$') {
+  # DAS cell logic
+  $enb = [int]$matches.enb
+  if ($matches.cid) {
+    $cellID = [int]$matches.cid
+  }
+}
+else {
+  throw "`$enb parameter must match \d+ or \d+-\d+. ``$enb`` does not match."
+}
+
+
 
 $data = @((Get-eNBPoints -Path $customDBPath -mcc $mcc -mnc $mnc -eNB $enb))
 if ($mcc -eq 310 -and $mnc -eq 120) {
   $data += @((Get-eNBPoints -Path $customDBPath -mcc 312 -mnc 250 -eNB $enb))
 }
 
+if($cellID -is [int]){
+  $data = @(($data | where-object {($_.CellID -band 255) -eq $cellID}))
+}
 
 
 if ($maxCircleDistance -ne -1) {
@@ -43,12 +59,12 @@ if ($maxCircleDistance -ne -1) {
 Write-Host "Using $($data.Count) points"
 
 try {
-  $results = @($kmlHeader.Replace('My Places.kml', "$enb"))
+  $results = @($kmlHeader.Replace('My Places.kml', "$enbString"))
   $results += Get-LineStyles
   $tower = [pscustomobject]@{
     MCC       = $mcc
     MNC       = $mnc
-    eNB       = $enb
+    eNB       = $enbString
     Latitude  = $latitude
     Longitude = $longitude
     Verified  = $verified
