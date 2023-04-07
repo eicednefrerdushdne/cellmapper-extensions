@@ -30,6 +30,10 @@ Add-Type -AssemblyName 'system.drawing'
 Write-Host "Reading DB"
 
 $data = @((Get-eNBPoints -Path $customDBPath -mcc $mcc -mnc $mnc -eNB $enb))
+if ($mcc -eq 310 -and $mnc -eq 120) {
+  $data += @((Get-eNBPoints -Path $customDBPath -mcc 312 -mnc 250 -eNB $enb))
+}
+
 
 
 if ($maxCircleDistance -ne -1) {
