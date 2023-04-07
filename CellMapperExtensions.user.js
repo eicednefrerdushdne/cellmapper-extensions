@@ -11,16 +11,31 @@
 
 (function() {
     'use strict';
+
+    var scripts = [
+        'https://cdn.jsdelivr.net/gh/beautify-web/js-beautify@v1.13.6/js/lib/beautify.min.js',
+        'https://cdn.jsdelivr.net/npm/prettier@2.8.2/parser-babel.js',
+        'https://cdn.jsdelivr.net/npm/prettier@2.8.2/standalone.js'
+        ];
+
+    for(var src in scripts) {
+    // Import javascript beautifier
+        var script = document.createElement('script');
+        script.type = 'text/javascript';
+        script.src = scripts[src];
+        document.head.appendChild(script);
+    }
+
     select_interaction.getFeatures().on("add", function (e) {
         var marker = e.element; //the feature selected
         //console.log(e);
         //debugger;
-        if(marker.get("base") != undefined) {
+        if(marker.get("name") != undefined) {
             var coordinates = marker.get('geometry').flatCoordinates;
             $.ajax({
                 type: "GET",
                 dataType: "json",
-                url: "http://localhost:8080/enb/" + marker.get('MCC') + "/" + marker.get('MNC') + "/" + marker.get('name'),
+                url: "http://localhost:8080/enb/" + marker.get('MCC') + "/" + marker.get('MNC') + "/" + (marker.get('towerName') ?? marker.get('base')),
                 xhrFields: {
                     withCredentials: false
                 },
@@ -51,6 +66,20 @@
 
     window.circleLayers = []
 
+    var beautifyFunction = function (func) {
+       var functionContents = func.toString()
+
+       if(functionContents.startsWith('function(')) {
+           functionContents = 'function xyz' + functionContents.substr(8);
+       }
+       functionContents = prettier.format(functionContents, {
+            parser: "babel",
+            plugins: prettierPlugins,
+       });
+       functionContents = functionContents.substr(functionContents.indexOf('{') + 1, functionContents.lastIndexOf('}') - functionContents.indexOf('{') - 1);
+
+       return functionContents;
+    }
 
     var resetCircleLayer = function(map, layerName, maxZoom, color) {
         var view = map.getView();
@@ -155,7 +184,10 @@
     }
 
     window.openGoogleEarth = function(eNB){
-        var t = window.Towers.find(function(z){return z.values_.name == eNB});
+        var t = window.Towers.find(function(z){return z.values_?.towerName == eNB});
+        if(t === undefined) {
+            t = window.Towers.find(function(z){return z.values_?.name == eNB});
+        }
 
         // Translate the projection coordinates to Latitude and Longitude
         var coordinates = ol.proj.toLonLat(t.values_.geometry.flatCoordinates, map.getView().getProjection());
@@ -185,103 +217,69 @@
 
     }
 
-    window.updateSmallCellState = function(isSmallCell, mcc, mnc, eNB) {
-        if(isSmallCell) {
-            window.smallcells.push('' + eNB);
-        } else {
-            var arrayIndex = window.smallcells.indexOf('' + eNB);
-            if(arrayIndex !== -1) {
-                window.smallcells.splice(arrayIndex, 1);
-            }
-        }
-
-        $.ajax({
-            type: isSmallCell ? "PUT" : "DELETE",
-            dataType: "json",
-            url: "http://localhost:8080/smallcells/" + mcc + "-" + mnc + "/" + eNB,
-            xhrFields: {
-                withCredentials: false
-            },
-            success :function(data)
-            {
-            }
-        });
-    };
-
-    var improvegetNetworkInfo = function(map) {
-        var func = window.getNetworkInfo;
-        var functionContents = func.toString()
-        functionContents = functionContents.substr(functionContents.indexOf('{') + 1, functionContents.lastIndexOf('}') - functionContents.indexOf('{') - 1)
-
-        var insertText = `
-        $.ajax({
-            type: "GET",
-            dataType: "json",
-            url: "http://localhost:8080/smallcells/" + inMCC + "-" + inMNC,
-            xhrFields: {
-                withCredentials: false
-            },
-            success :function(data)
-            {
-                window.smallcells = data;
-            }
-        });
-
-`
-        var searchText = `		$.ajax({`
-        var startIndex = functionContents.indexOf(searchText)
-
-        var newContents = functionContents.substr(0, startIndex) + insertText + functionContents.substr(startIndex);
-
-        var newfunc = new Function('inMCC', 'inMNC', newContents);
-        window.getNetworkInfo = newfunc;
-    }
-
     var improveContextMenu = function(map) {
         var listener = map.listeners_.contextmenu[0];
-        var functionContents = listener.toString()
-        functionContents = functionContents.substr(functionContents.indexOf('{') + 1, functionContents.lastIndexOf('}') - functionContents.indexOf('{') - 1)
+        var functionContents = beautifyFunction(listener);
 
-        var insertText = `
-                              + '<a href="javascript:copyToClipboard(\\'' + lat + ',' + long + '\\');">Copy Coordinates</a><br />'
-                              + '<a href="http://www.antennasearch.com/HTML/search/search.php?address=' + lat +'%2C+' + long + '" target="_blank" rel="noreferrer">Open in AntennaSearch.com</a><br />'
-`
-        var searchText = 'var theHTML = \'\''
+        var insertText = `'<a href="javascript:copyToClipboard(\\'' + o + ',' + n + '\\');">Copy Coordinates</a><br />'
+                        + '<a href="http://www.antennasearch.com/HTML/search/search.php?address=' + o +'%2C+' + n + '" target="_blank" rel="noreferrer">Open in AntennaSearch.com</a><br />'
+                        + `
+        var searchText = `  a =`
         var startIndex = functionContents.indexOf(searchText)
 
         var newContents = functionContents.substr(0, startIndex + searchText.length) + insertText + functionContents.substr(startIndex + searchText.length);
 
-        newContents = newContents.replace(`'<a href="https://www.google.com/maps/@' + lat +',' + long + ',15z"`, `'<a href="https://www.google.com/maps/search/?api=1&query=' + lat +',' + long + '"`)
-        var newListener = new Function('event', newContents);
+        newContents = newContents.replace(new RegExp(`<a href="https://www.google.com/maps/@.*15z`, 's'), `<a href="https://www.google.com/maps/search/?api=1&query=' + o + "," + n + '"`)
+        var newListener = new Function('e', newContents);
         map.listeners_.contextmenu[0] = newListener;
     }
 
-    var improveSideBarMenu = function(){
-        var func = window.getBaseStation;
+    var improveShowBandTilesAndTowers = function() {
+        var func = window.showBandTilesAndTowers;
         var functionContents = func.toString()
+        functionContents = js_beautify(functionContents);
         functionContents = functionContents.substr(functionContents.indexOf('{') + 1, functionContents.lastIndexOf('}') - functionContents.indexOf('{') - 1)
 
-        var insertText = `
-                var checkedText = window.smallcells.includes('' + inBase) ? 'checked' : '';
-				output+= "<li><label style='margin-bottom: unset;'><input type='checkbox' " + checkedText + " onchange='updateSmallCellState(this.checked, " + inMCC + ", " + inMNC + ", " + inBase + "); ' style='display: inline-block;'> Is Small Cell</label></li>";
-                output+= "<li><a href='#' onclick='openGoogleEarth(" + inBase + ")'>Open in Google Earth</a></li>";
-`
-        var searchText = `				output+= "<li><a href='#' onclick='HandleDeleteTower("`
-        var startIndex = functionContents.indexOf(searchText)
+        var newContents = functionContents;
 
-        var newContents = functionContents.substr(0, startIndex) + insertText + functionContents.substr(startIndex);
 
-        newContents = newContents.replace(`"<tr><td width='50%'>PCI</td><td>" +  towerData.cells[cellid].PCI + (systemType == "LTE" ? " (" + Math.floor(parseInt(towerData.cells[cellid].PCI)/3) + "/" + (parseInt(towerData.cells[cellid].PCI) % 3) + ")" : "") + "</td></tr>";`,
-                                          `"<tr><td width='50%'>PCI</td><td><a href='#' onclick='$(\\"#pcipsc_search\\").val(\\"" + towerData.cells[cellid].PCI + "\\");handlePCIPSCSearch();'>" +  towerData.cells[cellid].PCI + (systemType == "LTE" ? " (" + Math.floor(parseInt(towerData.cells[cellid].PCI)/3) + "/" + (parseInt(towerData.cells[cellid].PCI) % 3) + ")" : "") + "</a></td></tr>";`);
+        newContents = newContents.replace(`showTiles(MCC, MNC)`,
+                                          `tilesEnabled && showTiles(MCC, MNC)`);
 
-        var newfunc = new Function('inMCC', 'inMNC', 'inLAC', 'inBase', 'inMarker', newContents);
+        var newfunc = new Function('e', newContents);
+        window.showBandTilesAndTowers = newfunc;
+    }
+
+    var improveSideBarMenu = function(){
+
+        var func = window.getBaseStation;
+        var functionContents = beautifyFunction(func);
+
+        var newContents = functionContents;
+        var insertText = `<li><a href='#' onclick='openGoogleEarth(\\"" + (r?.towerAttributes?.TOWER_NAME ?? n) + "\\")'>Open in Google Earth</a></li>`
+        var searchText = new RegExp(`<li><a href='#' onclick='HandleDeleteTower`, 's')
+        var startIndex = newContents.search(searchText)
+
+        newContents = newContents.substr(0, startIndex) + insertText + newContents.substr(startIndex);
+
+        startIndex = newContents.search(new RegExp(`" \\+\\s+r.cells\\[w\\].PCI \\+`, 's'));
+        insertText = `<a href='#' onclick='$(\\"#pcipsc_search\\").val(\\"" + r.cells[w].PCI + "\\");handlePCIPSCSearch();'>`
+
+        newContents = newContents.substr(0, startIndex) + insertText + newContents.substr(startIndex);
+
+        startIndex = newContents.search(new RegExp(`</td></tr>"\\),\\s+"LTE" == s &&`, 's'));
+        insertText = `</a>`
+
+        newContents = newContents.substr(0, startIndex) + insertText + newContents.substr(startIndex);
+
+        var newfunc = new Function('e','t','o','n','a', newContents);
         window.getBaseStation = newfunc;
 
     }
 
     var improveGetTowerOverrideHistory = function(){
         var func = window.getTowerOverrideHistory;
-        var functionContents = func.toString()
+        var functionContents = func.toString();
         functionContents = functionContents.substr(functionContents.indexOf('{') + 1, functionContents.lastIndexOf('}') - functionContents.indexOf('{') - 1)
 
 
@@ -289,7 +287,7 @@
         functionContents = functionContents.replace(`+ ")'>View</a></td>";`,
                                           `+ ")'>(" + item['latitude'] + "," + item['longitude'] + ")</a><br /><a href='#' onclick='javascript:triggerTowerLocationConfirmation(\\"" + item['mcc'] + '", "' + item['mnc'] + '", "' + item['rat'] + '", "' + item['lac'] + '", "' + item['base'] + '", "' + item['latitude'] + '", "' + item['longitude'] + '"' + ")'>Restore this Location</a></td>";`);
 
-        var newfunc = new Function('inMCC', 'inMNC', 'inSystem', 'inLAC', 'inBase', 'inOffset', functionContents);
+        var newfunc = new Function('e','t','o','n','a','r','l=!1', functionContents);
         window.getTowerOverrideHistory = newfunc;
 
     }
@@ -305,7 +303,7 @@
         if(window.togglingShowMineOnly === true) {
           return;
         }
-        var value = showMineOnly = !showMineOnly;
+        var e = showMineOnly = !showMineOnly;
         ` + functionContents + `
 
         window.togglingShowMineOnly = true;
@@ -323,6 +321,7 @@
     var fixToggleTrails = function() {
         var func = window.toggleTrails;
         var functionContents = func.toString()
+        functionContents = js_beautify(functionContents)
         functionContents = functionContents.substr(functionContents.indexOf('{') + 1, functionContents.lastIndexOf('}') - functionContents.indexOf('{') - 1)
 
         functionContents = `
@@ -335,6 +334,7 @@
         $('#doTrails')[0].checked = tilesEnabled;
         $('#doTrails2')[0].checked = tilesEnabled;
         window.togglingTrails = false;
+        window.updateLinkback();
         `;
 
         var newfunc = new Function(functionContents);
@@ -366,7 +366,7 @@
         window.toggleShowUnverifiedOnly = newfunc;
 
     }
-
+/*
     window.triggerTowerLocationConfirmation = function triggerTowerLocationConfirmation(inMCC, inMNC, inSystem, inLAC, inBase, latitude, longitude) {
         var tower = window.Towers.find(t => {return t.get('base') == inBase && t.get('MCC') == inMCC && t.get('MNC') == inMNC && t.get('system') == inSystem;});
 
@@ -374,48 +374,39 @@
             handleTowerMove(tower, latitude, longitude);
         }
 
-    }
+    }*/
     window.onlyPrimaryTowers = false;
     window.smallcells = [];
     window.filterTowerMover = [];
     window.excludeFilterTowerMover = false;
     var fixRefreshTowers = function() {
         var func = window.refreshTowers;
-        var functionContents = func.toString()
-        functionContents = functionContents.substr(functionContents.indexOf('{') + 1, functionContents.lastIndexOf('}') - functionContents.indexOf('{') - 1)
-
+        var functionContents = beautifyFunction(func);
+        var newContents = functionContents;
         var insertText = `
 			if(filterTowerMover.length !== 0) {
-                if(undefined === Towers[i].get("towerMover")) {
-                    visible = false;
-                } else if((filterTowerMover.indexOf(Towers[i].get("towerMover")) !== -1) === window.excludeFilterTowerMover) {
-                    visible = false;
+                if(undefined === Towers[e].get("towerMover")) {
+                    t = false;
+                } else if((filterTowerMover.indexOf(Towers[e].get("towerMover")) !== -1) === window.excludeFilterTowerMover) {
+                    t = false;
                 }
             }
 
-            if(typeof filterIDs !== 'undefined' && filterIDs.length !== 0 && filterIDs.indexOf(Towers[i].get('base')) === -1) {
-                visible = false;
+            if(typeof filterIDs !== 'undefined' && filterIDs.length !== 0 && filterIDs.indexOf(Towers[e].get('base')) === -1) {
+                t = false;
             }
-
-            if(typeof window.smallcells !== 'undefined' && $('#filterSmallCells').length == 1) {
-                 var filterValue = $('#filterSmallCells').val();
-                 if(filterValue == 'HideSmallCells' && window.smallcells.indexOf(Towers[i].get('base')) !== -1)
-                     visible = false;
-                 else if(filterValue == 'OnlySmallCells' && window.smallcells.indexOf(Towers[i].get('base')) === -1)
-                     visible = false;
-            }
-
+/*
             if(window.onlyPrimaryTowers === true) {
-                var bands = Towers[i].get('bands')
+                var bands = Towers[e].get('bands')
                 if(!((bands.includes(12) || bands.includes(13)) && (bands.includes(2) || bands.includes(4) || bands.includes(66)))) {
-                    visible = false;
+                    t = false;
                 }
-            }
+            }*/
 `
-        var searchText = `		/*	if(showMineOnly && userID != null)`
-        var startIndex = functionContents.indexOf(searchText)
-
-        var newContents = functionContents.substr(0, startIndex) + insertText + functionContents.substr(startIndex);
+        var searchText = new RegExp(`try.+vectorSourceTowers`, 's');
+        var startIndex = newContents.search(searchText)
+        if(startIndex !== -1)
+            newContents = newContents.substr(0, startIndex) + insertText + newContents.substr(startIndex);
 
         var newfunc = new Function(newContents);
         window.refreshTowers = newfunc;
@@ -435,32 +426,28 @@
 
 
     var fixPCISearch = function() {
-        var func = window.handlePCIPSCSearch;
-        var functionContents = func.toString()
-        functionContents = functionContents.substr(functionContents.indexOf('{') + 1, functionContents.lastIndexOf('}') - functionContents.indexOf('{') - 1)
+        var functionContents = beautifyFunction(window.handlePCIPSCSearch)
 
+        var newContents = functionContents;
         var insertText = `
+        var o = handleResponse(t);
 			window.filterIDs = [];
-            $.each(towerData, function(i,item){
+            $.each(o, function(i,item){
                 filterIDs.push(item.siteID);
             });
             refreshTowers();
 `
-        var deleteStartText = `var displayData = "<b>R`
-        var deleteEndText = `bootbox.alert(displayData);`
+        var search = new RegExp(`var o = handleResponse.+onEscape: !0 }\\);`, 's');
 
-        var firstEndIndex = functionContents.indexOf(deleteStartText);
-        var secondStartIndex = functionContents.indexOf(deleteEndText);
+        newContents = newContents.replace(search, insertText);
 
-        var newContents = functionContents.substr(0, firstEndIndex) + insertText + functionContents.substr(secondStartIndex + deleteEndText.length);
-
-        newContents = newContents.replace(`var theID = $("#pcipsc_search").val();`, `
-        var theID = $("#pcipsc_search").val();
-        if(theID === '') {
-           window.filterIDs = [];
-           refreshTowers();
-           return;
-        }`);
+        newContents = newContents.replace(`var e = $("#pcipsc_search").val();`,
+`  var e = $("#pcipsc_search").val();
+   if(e === '') {
+     window.filterIDs = [];
+     refreshTowers();
+     return;
+   }`);
 
         var newfunc = new Function(newContents);
         window.handlePCIPSCSearch = newfunc;
@@ -478,46 +465,78 @@
         interaction.layerFilter_ = function(l) {return !window.circleLayers.includes(l);};
     });
 
+    waitForTrue(function() {return window.js_beautify !== undefined && window.prettier !== undefined && window.prettierPlugins !== undefined && window.prettierPlugins.babel !== undefined},
+                function() {
 
-    waitForTrue(function() {return map !== null && map.listeners_ !== null  && map.listeners_.contextmenu !== null  && map.listeners_.contextmenu[0] !== null},
-                function() {improveContextMenu(window.map);});
+        waitForTrue(function() {return map !== null && map.listeners_ !== null  && map.listeners_.contextmenu !== null  && map.listeners_.contextmenu[0] !== null},
+                    function() {improveContextMenu(window.map)});
 
-    waitForTrue(function() {return window.getNetworkInfo !== undefined},
-                function() {improvegetNetworkInfo();});
+        waitForTrue(function() {return window.toggleTrails !== undefined},
+                    function() {fixToggleTrails();
+                               });
 
-    waitForTrue(function() {return window.getBaseStation !== undefined},
-                function() {improveSideBarMenu();});
+        waitForTrue(function() {return window.refreshTowers !== undefined},
+                    function() {fixRefreshTowers();
+                               });
 
-    waitForTrue(function() {return window.handleTowerMove !== undefined},
-                function() {fixHandleTowerMove();});
+        waitForTrue(function() {return window.getBaseStation !== undefined},
+                    function() {improveSideBarMenu();
+        });
 
-    waitForTrue(function() {return window.handlePCIPSCSearch !== undefined},
-                function() {fixPCISearch();});
+        waitForTrue(function() {return window.handleTowerMove !== undefined},
+                    function() {//fixHandleTowerMove();
+        });
 
-    waitForTrue(function() {return window._renderUserStats !== undefined},
-                function() {window._renderUserStats = function (inUid, divName)
-    {
-        $("#"+divName).append(" <a href='#' onclick='getUserHistory(" + inUid + ", 0)'><span title='" + ("Points: " + userCache[inUid].totalPoints + ", Cells: " + userCache[inUid].totalCells + ", Towers modified: " + userCache[inUid].totalLocatedTowers) + ", ID: " + inUid +"'>"  + userCache[inUid].userName + "</span>" + (userCache[inUid].premium ? "<span title='Premium User' style='color: gold'>&#x2605;</span></a>" : ""));
-    };
-                           });
+        waitForTrue(function() {return window.handlePCIPSCSearch !== undefined},
+                    function() {fixPCISearch();
+        });
 
-    waitForTrue(function() {return window.toggleshowMineOnly !== undefined},
-                function() {fixtoggleshowMineOnly();});
+        waitForTrue(function() {return window._renderUserStats !== undefined},
+                    function() {window._renderUserStats = function (inUid, divName)
+        {
+            $("#"+divName).append(" <a href='#' onclick='getUserHistory(" + inUid + ", 0)'><span title='" + ("Points: " + userCache[inUid].totalPoints + ", Cells: " + userCache[inUid].totalCells + ", Towers modified: " + userCache[inUid].totalLocatedTowers) + ", ID: " + inUid +"'>"  + userCache[inUid].userName + "</span>" + (userCache[inUid].premium ? "<span title='Premium User' style='color: gold'>&#x2605;</span></a>" : ""));
+        };
+                               });
 
-    waitForTrue(function() {return window.toggleTrails !== undefined},
-                function() {fixToggleTrails();});
+        waitForTrue(function() {return window.toggleshowMineOnly !== undefined},
+                    function() {fixtoggleshowMineOnly();
+                               });
 
-    waitForTrue(function() {return window.toggleShowUnverifiedOnly !== undefined},
-                function() {fixToggleShowUnverifiedOnly();});
+        waitForTrue(function() {return window.toggleShowUnverifiedOnly !== undefined},
+                    function() {fixToggleShowUnverifiedOnly();
+                               });
 
-    waitForTrue(function() {return window.refreshTowers !== undefined},
-                function() {fixRefreshTowers();});
+        waitForTrue(function() {return window.getTowerOverrideHistory !== undefined},
+                    function() {improveGetTowerOverrideHistory();
+                               });
 
-    waitForTrue(function() {return window.getTowerOverrideHistory !== undefined},
-                function() {improveGetTowerOverrideHistory();});
+        waitForTrue(function() {return window.showBandTilesAndTowers !== undefined},
+                    function() {improveShowBandTilesAndTowers();
+                               });
 
+        if(window.tilesEnabled === false) {
+            waitForTrue(function() {
+                return window.tilesEnabled === false && map.getLayers().array_.some((function(t) {return null != t && null != t.get("name") && t.get("name") === "SignalTrails"}))
+                }, function() {
+                window.clearLayer("SignalTrails");
+            });
+        }
+    });
 
+    // Add keyboard shortcuts
+function doc_keyUp(e) {
 
+    // this would test for whichever key is 40 (down arrow) and the ctrl key at the same time
+    if (e.altKey && e.key === 'p') {
+        // call your function to do the thing
+        $('#pcipsc_search').val('');
+        window.handlePCIPSCSearch();
+    }
+}
+// register the handler
+document.addEventListener('keyup', doc_keyUp, false);
+
+/*
     waitForTrue(function() {return $("#accountTable i.fa.caretIcon").length == 1},
                 function() {
         $("#accountTable tr.collapsableSection").click();
@@ -549,7 +568,7 @@
 			<td align="right"><input type="checkbox" id="onlyPrimaryTowers" onclick="toggleOnlyPrimaryTowers()"></td>
 		</tr>
         `).insertBefore($('#doLowAccuracy').parents()[1]);
-    });
+    });*/
 
     waitForTrue(function() {return $(".nav-link.nav-linkpage-scroll[href='https://cellmapper.freshdesk.com/']").length == 1},
                 function() {
