@@ -3,3 +3,6 @@ cellmapper.dbe
 log.txt
 /ToImport/*_lastDownloaded.txt
 /ToImport/Imported/
+/ToImport/
+/ToDelete/
+/win-x64*
