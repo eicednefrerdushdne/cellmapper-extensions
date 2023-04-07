@@ -6,3 +6,4 @@ log.txt
 /ToImport/
 /ToDelete/
 /win-x64*
+*.lnk
