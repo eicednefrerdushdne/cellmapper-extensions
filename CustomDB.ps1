@@ -164,3 +164,25 @@ function Import-CellMapperDB([string]$cmDBPath, [string]$customDBPath) {
   }
   Write-Host "    Imported $($toAdd.Count) points"
 }
+
+function Remove-CellMapperDBPoints([string]$cmDBPath, [string]$customDBPath) {
+  $points = Get-PointsForCustomDB $cmDBPath
+  Write-Host "    Processing $($points.count) points"
+  $query = "Delete from Points where MCC = @mcc and MNC = @mnc and CellID = @cellid and Latitude = @latitude and Longitude = @longitude"
+  $totalDeleted = 0
+  foreach ($point in $points) {
+    $parameters = @{
+      mcc       = $point.MCC
+      mnc       = $point.MNC
+      cellid    = $point.CellID
+      latitude  = $point.Latitude
+      longitude = $point.Longitude
+    }
+    $deleted = Invoke-SqliteQuery -DataSource $customDBPath -Query $query -SqlParameters $parameters
+    if ($deleted -is [int]) {
+      $totalDeleted += $deleted
+    }
+  }
+  
+  Write-Host "    Removed $totalDeleted points"
+}
