@@ -84,23 +84,27 @@ https://www.cellmapper.net/map?MCC=$($tower.MCC)&amp;MNC=$($tower.MNC)&amp;type=
   $circles = @()
   $lineFolders = @{}
   $pointFolders = @{}
+  $circleFolders = @{}
   $signals = $points | ForEach-Object { $_.Signal } | Sort-Object -Descending
-  if($signals) {
-  $ratios = @(
+  if ($signals) {
+    $ratios = @(
     (($signals[0] * 3 + $signals[$signals.count - 1]) / 4),
     (($signals[0] + $signals[$signals.count - 1]) / 2),
     (($signals[0] + $signals[$signals.count - 1] * 3) / 4))
-  } else {
+  }
+  else {
     $ratios = @(-85, -95, -105)
   }
   
   if (-not $noCircles) {
     $taPoints = [System.Collections.ArrayList](@($points | Where-Object { $_.TAMeters -ne -1 }))
-    while ($pointsToUse.Count -gt 100) {
-      $unusedPoints.RemoveAt((Get-Random -Maximum $unusedPoints.Count))
-    }
+
     foreach ($point in $taPoints) {
-      $circles += Get-CirclePlacemark $point
+      $folderName = Get-PointFolderName $point
+      if (-not $circleFolders[$folderName]) {
+        $circleFolders[$folderName] = @()
+      }
+      $circleFolders[$folderName] += Get-CirclePlacemark $point
     }
   }
   
@@ -144,19 +148,33 @@ https://www.cellmapper.net/map?MCC=$($tower.MCC)&amp;MNC=$($tower.MNC)&amp;type=
     }
     $parts += "</Folder>"
   }
-
-  if ($circles.Count) {
-    #### Circles
-    $parts += "
+  
+  #### Circles
+  if (-not $noCircles) {
+    if ($circleFolders.Count) {
+      $sortedCircleFolders = $circleFolders.Keys | Sort-object { $_[$_.IndexOf(' ') - 1] }, { $_ }
+      
+      $parts += "
   <Folder>
     <name>Circles</name>
     <open>0</open>  
   "
-    $parts += $circles
-    $parts += "</Folder>"
-    #### End Circles
-  }
 
+      foreach ($cf in $sortedCircleFolders) {
+        $parts += "
+      <Folder>
+        <name>$cf</name>
+        <open>0</open>  
+      "
+        $parts += $circleFolders[$cf]
+        $parts += "</Folder>"
+      }
+
+
+      $parts += "</Folder>"
+      #### End Circles
+    }
+  }
   if (-not $noLines) {
     #### Lines to Tower
     if ($tower) {
