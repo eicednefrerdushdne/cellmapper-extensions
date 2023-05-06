@@ -184,10 +184,16 @@
         }
     }
 
-    window.openGoogleEarth = function (eNB) {
-        var t = window.Towers.find(function (z) { return z.values_?.towerName == eNB });
+    window.openGoogleEarth = function (mcc, mnc, rat, towerID) {
+        var t = window.Towers.find(function (z) { return z.values_?.MCC == mcc && z.values_?.MNC == mnc && z.values_?.system == rat && z.values_?.towerName == towerID });
         if (t === undefined) {
-            t = window.Towers.find(function (z) { return z.values_?.name == eNB });
+            t = window.Towers.find(function (z) { return z.values_?.MCC == mcc && z.values_?.MNC == mnc && z.values_?.system == rat && z.values_?.name == towerID });
+        }
+
+        if(t === undefined) {
+            console.error("Couldn't find " + mcc + "-" + mnc + " " + rat + " " + towerID + " in the window.Towers array");
+            debugger;
+            if(t === undefined) {return;};
         }
 
         // Translate the projection coordinates to Latitude and Longitude
@@ -198,12 +204,13 @@
             url: "http://localhost:8080/openGoogleEarth",
             contentType: "application/json; charset=UTF-8",
             data: JSON.stringify({
-                eNB: eNB,
-                mcc: t.values_.MCC,
-                mnc: t.values_.MNC,
-                latitude: coordinates[1],
+                towerID:   towerID,
+                rat:       t.values_.system,
+                mcc:       t.values_.MCC,
+                mnc:       t.values_.MNC,
+                latitude:  coordinates[1],
                 longitude: coordinates[0],
-                verified: t.values_.verified
+                verified:  t.values_.verified
             }),
             xhrFields: {
                 withCredentials: false
@@ -253,7 +260,8 @@
         var functionContents = func.body;
 
         var newContents = functionContents;
-        var insertText = `<li><a href='#' onclick='openGoogleEarth(\\"" + (r?.towerAttributes?.TOWER_NAME ?? ` + func.arguments[3] + `) + "\\")'>Open in Google Earth</a></li>`
+
+        var insertText = `<li><a href='#' onclick='openGoogleEarth(" + ` + func.arguments[0] + ` + ", " + ` + func.arguments[1] + ` + ", \\"" + netType + "\\", \\"" + (r?.towerAttributes?.TOWER_NAME ?? ` + func.arguments[3] + `) + "\\")'>Open in Google Earth</a></li>`
         var searchText = new RegExp(`<li><a href='#' onclick='HandleDeleteTower`, 's')
         var startIndex = newContents.search(searchText)
 

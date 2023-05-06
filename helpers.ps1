@@ -231,11 +231,12 @@ function Get-PointPlacemark($point, $signalRatios = @(-84, -102, -111), [switch]
       $style = "#m_ylw-dot"
     }
   }
+  $shift = Get-SystemRightShift -mcc $point.mcc -mnc $point.mnc -rat $point.system
   "
 <Placemark>
   <name>$($point.Signal)</name>
   <visibility>1</visibility>
-  <description>$($point.CellID -shr 8)-$($point.CellID % 256) ($($point.Signal))  $($point.TAMeters)m</description>
+  <description>$($point.CellID -shr $shift.RightShift)-$($point.CellID -band $shift.CIDMask) ($($point.Signal))  $($point.TAMeters)m</description>
   <styleUrl>$style</styleUrl>
   <Point>
     <gx:drawOrder>1</gx:drawOrder>
@@ -244,8 +245,31 @@ function Get-PointPlacemark($point, $signalRatios = @(-84, -102, -111), [switch]
 </Placemark>"
 }
 
+$lteMask = [pscustomobject]@{
+  RightShift = 8
+  CIDMask    = [int64]::maxvalue -shr (64 - 8)
+}
+
+$tmoNRMask = [pscustomobject]@{
+  RightShift = 12
+  CIDMask    = [int64]::maxvalue -shr (64 - 12)
+}
+
+function Get-SystemRightShift($mcc, $mnc, $rat) {
+  if ($rat -eq 'LTE') {
+    return $lteMask
+  }
+  elseif ($rat -eq 'NR') {
+    if ($mcc -eq 310 -and $mnc -eq 260) {
+      return $tmoNRMask
+    }
+  }
+}
+
 function Get-PointFolderName($point) {
-  $sectorNumber = $point.CellID -band 0xFF # Keep last byte
+  $shift = Get-SystemRightShift -mcc $point.mcc -mnc $point.mnc -rat $point.system
+
+  $sectorNumber = $point.CellID -band $shift.CIDMask # Keep last byte
   
   "$sectorNumber - Band $($point.Band)"
 }
@@ -255,9 +279,10 @@ function Get-CirclePlacemark($point) {
   if ($ta -eq 0) {
     $ta = 40
   }
+  $shift = Get-SystemRightShift -mcc $point.mcc -mnc $point.mnc -rat $point.system
   "
   <Placemark>
-    <name>$($point.CellID -shr 8)-$($point.CellID % 256) ($($point.Signal))  $($point.TAMeters)m</name>
+    <name>$($point.CellID -shr $shift.RightShift)-$($point.CellID -band $shift.CIDMask) ($($point.Signal))  $($point.TAMeters)m</name>
     <visibility>1</visibility>
     <styleUrl>#inline0</styleUrl>
     <LineString>

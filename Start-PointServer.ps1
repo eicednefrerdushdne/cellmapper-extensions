@@ -1,5 +1,15 @@
 start-transcript -Path "$psscriptroot\log.txt" -Append -Force
 
+############################################################
+# Powershell-based point server for Cellmapper's website ###
+############################################################
+############################################################
+# This allows the website to display points that you have ##
+# collected yourself and to open Google Earth showing the ##
+# points you've collected for a particular tower          ##
+############################################################
+
+
 Add-Type -AssemblyName 'System.Device'
 # enter this URL to reach PowerShell’s web server
 $url = 'http://localhost:8080/'
@@ -89,26 +99,27 @@ $GLOBAL:htmlcontents = @{
     return ConvertTo-Json $enbs
 
   }
-  '^GET /enb/\d+/\d+/\d+(-\d+)?$'                 = {
+  '^GET /enb/\d+/\d+/\d+(-\d+)?$'          = {
     param (
       [System.Net.HttpListenerRequest]
       $request
     )
     $m = $request.Url.LocalPath -match '^/enb/(?<mcc>\d+)/(?<mnc>\d+)/(?<enb>\d+)(-(?<cid>\d+))?$'
 
-    if($matches.cid){
+    if ($matches.cid) {
       Write-Host "Retrieving points for $($matches.mcc)-$($matches.mnc) eNB $($matches.enb) cid $($matches.cid)"
-    } else {
+    }
+    else {
       Write-Host "Retrieving points for $($matches.mcc)-$($matches.mnc) eNB $($matches.enb)"
     }
     $points = @(Get-eNBPoints -Path $customDBPath -enb $matches.enb -mcc $matches.mcc -mnc $matches.mnc)
-    if($matches.mcc -eq 310 -and $matches.mnc -eq 120) {
+    if ($matches.mcc -eq 310 -and $matches.mnc -eq 120) {
       $points += @(Get-eNBPoints -Path $customDBPath -enb $matches.enb -mcc 312 -mnc 250)
     }
 
-    if($matches.cid){
+    if ($matches.cid) {
       $cid = [int]$matches.cid
-      $points = [System.Collections.ArrayList]@($points | where-object {($_.CellID -band 255) -eq $cid})
+      $points = [System.Collections.ArrayList]@($points | where-object { ($_.CellID -band 255) -eq $cid })
     }
 
     $alwaysKeepPoints = [System.Collections.ArrayList]@($points | Where-Object { $_.TAMeters -le 150 })
@@ -126,12 +137,44 @@ $GLOBAL:htmlcontents = @{
     Write-Host "  Returning $($combined.Count) points of $($points.Count)"
     return  ConvertTo-Json $combined
   }
+  '^GET /gnb/\d+/\d+/\d+(-\d+)?$'         = {
+    param (
+      [System.Net.HttpListenerRequest]
+      $request
+    )
+    $m = $request.Url.LocalPath -match '^/gnb/(?<mcc>\d+)/(?<mnc>\d+)/(?<gnb>\d+)(-(?<cid>\d+))?$'
+
+    if ($matches.cid) {
+      Write-Host "Retrieving points for $($matches.mcc)-$($matches.mnc) gnb $($matches.gnb) cid $($matches.cid)"
+    }
+    else {
+      Write-Host "Retrieving points for $($matches.mcc)-$($matches.mnc) gnb $($matches.gnb)"
+    }
+    $points = @(Get-BasePoints -Path $customDBPath gnb $matches.gnb -mcc $matches.mcc -mnc $matches.mnc)
+
+    if ($matches.cid) {
+      $cid = [int]$matches.cid
+      $points = [System.Collections.ArrayList]@($points | where-object { ($_.CellID -band ([math]::pow(2, 12) - 1)) -eq $cid })
+    }
+
+    $filterPoints = [System.Collections.ArrayList]@($points)
+    
+    while ($filterPoints.Count -gt 100) {
+      $i = 0
+      if ($filterPoints.Count -gt 1) {
+        $i = Get-Random -Maximum ($filterPoints.Count - 1)
+      }
+      $filterPoints.RemoveAt($i)
+    }
+
+    Write-Host "  Returning $($filterPoints.Count) points of $($points.Count)"
+    return  ConvertTo-Json $filterPoints
+  }
   '^POST /openGoogleEarth$'                = {
     param (
       [System.Net.HttpListenerRequest]
       $request
     )
-    #$m = $request.Url.LocalPath -match '^/openGoogleEarth/(?<enb>\d+)$'
     $requestJson = $null
     try {
       $strReader = [System.IO.StreamReader]::new($request.InputStream)
@@ -144,8 +187,11 @@ $GLOBAL:htmlcontents = @{
       if ($requestJson.mnc -isnot [int]) {
         throw 'mnc was not an int'
       }
-      if ($requestJson.enb -isnot [string]) {
-        throw 'eNB was not a string'
+      if ($requestJson.rat -isnot [string]) {
+        throw 'rat was not a string'
+      }
+      if ($requestJson.towerID -isnot [string]) {
+        throw 'towerID was not a string'
       }
       if ($requestJson.latitude -isnot [decimal]) {
         throw 'latitude was not a decimal'
@@ -163,11 +209,11 @@ $GLOBAL:htmlcontents = @{
       }
     }
     
-    Write-Host "Opening Google Earth for eNB $($requestJson.enb)"
+    Write-Host "Opening Google Earth for $($requestJson.rat) $($requestJson.towerID)"
     mkdir "$PSScriptRoot\kmls" -force
-    $filename = "$PSScriptRoot\kmls\tower$($requestJson.mcc)-$($requestJson.mnc)-$($requestJson.enb).kml"
-    Write-Host "Running & .\Create-CellmapperKML.ps1 -mcc $($requestJson.mcc) -mnc $($requestJson.mnc) -eNB '$($requestJson.enb)' -filename '$filename' -noLines"
-    . .\Create-CellmapperKML.ps1 -mcc $requestJson.mcc -mnc $requestJson.mnc -eNB $requestJson.enb -latitude $requestJson.Latitude -longitude $requestJson.Longitude -verified $requestJson.verified -filename $filename -noLines
+    $filename = "$PSScriptRoot\kmls\tower$($requestJson.mcc)-$($requestJson.mnc)-$($requestJson.towerID).kml"
+    Write-Host "Running & .\Create-CellmapperKML.ps1 -mcc $($requestJson.mcc) -mnc $($requestJson.mnc) -rat '$($requestJson.rat)' -towerID '$($requestJson.towerID)' -filename '$filename' -noLines"
+    . .\Create-CellmapperKML.ps1 -mcc $requestJson.mcc -mnc $requestJson.mnc -rat $requestJson.rat -towerID $requestJson.towerID -latitude $requestJson.Latitude -longitude $requestJson.Longitude -verified $requestJson.verified -filename $filename -noLines
     Start-Process $filename
 
     return 'hello'

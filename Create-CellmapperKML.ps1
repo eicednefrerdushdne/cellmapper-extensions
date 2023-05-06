@@ -1,11 +1,12 @@
 [CmdletBinding()]
 param (
-  [string]$eNB = '',
+  [string]$towerID = '',
   $filename = '.kml',
   [int]$mcc = 310,
   [int]$mnc = 260,
   [decimal]$latitude,
   [decimal]$longitude,
+  [string]$rat,
   [bool]$verified,
   [switch]$noCircles,
   [switch]$noLines = $true,
@@ -28,27 +29,32 @@ Add-Type -AssemblyName 'system.drawing'
 
 
 Write-Host "Reading DB"
-$enbString = $enb
-if ($enb -match '^(?<enb>\d+)(-(?<cid>\d+))?$') {
+$towerIDString = $towerID
+if ($towerIDString -match '^(?<towerID>\d+)(-(?<cid>\d+))?$') {
   # DAS cell logic
-  $enb = [int]$matches.enb
+  $towerID = [int]$matches.towerID
   if ($matches.cid) {
     $cellID = [int]$matches.cid
   }
 }
 else {
-  throw "`$enb parameter must match \d+ or \d+-\d+. ``$enb`` does not match."
+  throw "`$towerID parameter must match \d+ or \d+-\d+. ``$towerID`` does not match."
 }
 
 
+if ($rat -eq 'LTE') {
 
-$data = @((Get-eNBPoints -Path $customDBPath -mcc $mcc -mnc $mnc -eNB $enb))
-if ($mcc -eq 310 -and $mnc -eq 120) {
-  $data += @((Get-eNBPoints -Path $customDBPath -mcc 312 -mnc 250 -eNB $enb))
+  $data = @((Get-eNBPoints -Path $customDBPath -mcc $mcc -mnc $mnc -eNB $towerID))
+  if ($mcc -eq 310 -and $mnc -eq 120) {
+    $data += @((Get-eNBPoints -Path $customDBPath -mcc 312 -mnc 250 -eNB $towerID))
+  }
+}
+elseif ($rat -eq 'NR') {
+  $data = @((Get-gNBPoints -Path $customDBPath -mcc $mcc -mnc $mnc -gnb $towerID))
 }
 
-if($cellID -is [int]){
-  $data = @(($data | where-object {($_.CellID -band 255) -eq $cellID}))
+if ($cellID -is [int]) {
+  $data = @(($data | where-object { ($_.CellID -band 255) -eq $cellID }))
 }
 
 
@@ -59,18 +65,18 @@ if ($maxCircleDistance -ne -1) {
 Write-Host "Using $($data.Count) points"
 
 try {
-  $results = @($kmlHeader.Replace('My Places.kml', "$enbString"))
+  $results = @($kmlHeader.Replace('My Places.kml', "$towerIDString - $($data.count)"))
   $results += Get-LineStyles
   $tower = [pscustomobject]@{
     MCC       = $mcc
     MNC       = $mnc
-    eNB       = $enbString
+    eNB       = $towerIDString
     Latitude  = $latitude
     Longitude = $longitude
     Verified  = $verified
   }
-  $enbFolder = Get-eNBFolder -tower $tower -points $data -noCircles:$noCircles -noLines:$noLines -noPoints:$noPoints -noTowers:$noTowers -noToMove:$noToMove -colorPointsBySector:$colorPointsBySector
-  $results += $enbFolder.XML
+  $towerIDFolder = Get-eNBFolder -tower $tower -points $data -noCircles:$noCircles -noLines:$noLines -noPoints:$noPoints -noTowers:$noTowers -noToMove:$noToMove -colorPointsBySector:$colorPointsBySector
+  $results += $towerIDFolder.XML
   
   $results += $kmlFooter
 

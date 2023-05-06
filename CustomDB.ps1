@@ -91,12 +91,16 @@ function Get-PointsForCustomDB([string]$cmDB) {
   return $data
 }
 
-function Get-CellIDPoints([string]$Path, [int]$CellID) {
+function Get-CellIDPoints([string]$Path, [long]$CellID) {
   return Invoke-SqliteQuery -DataSource $Path -Query "Select * from Points where CellID = $CellID"
 }
 
-function Get-eNBPoints([string]$Path, [int]$mcc, [int]$mnc, [int]$eNB) {
+function Get-eNBPoints([string]$Path, [int]$mcc, [int]$mnc, [long]$eNB) {
   return Invoke-SqliteQuery -DataSource $Path -Query "Select * from Points where MCC = $mcc and MNC = $mnc and (CellID >> 8) = $eNB and System = 'LTE'"
+}
+
+function Get-gNBPoints([string]$Path, [int]$mcc, [int]$mnc, [long]$gNB) {
+  return Invoke-SqliteQuery -DataSource $Path -Query "Select * from Points where MCC = $mcc and MNC = $mnc and (CellID >> 12) = $gNB and System = 'NR'"
 }
 
 function Add-PointsToCustomDB([string]$customDBPath, $points) {
