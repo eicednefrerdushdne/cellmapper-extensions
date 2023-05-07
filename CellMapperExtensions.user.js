@@ -306,7 +306,9 @@
           return;
         }
         var e = showMineOnly = !showMineOnly;
-        ` + functionContents + `
+        getTowersInView(MCC, MNC, !0, netType),
+        $.cookie("showMineOnly", e, { expires: 3600 }),
+        _paq.push(["trackEvent", "Map", "Filter - toggleshowMineOnly"]);
 
         window.togglingShowMineOnly = true;
         $('#showMineOnly')[0].checked = showMineOnly;
