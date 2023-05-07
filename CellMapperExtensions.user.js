@@ -229,15 +229,15 @@
         var func = beautifyFunction(listener);
         var functionContents = func.body;
 
-        var insertText = `'<a href="javascript:copyToClipboard(\\'' + o + ',' + n + '\\');">Copy Coordinates</a><br />'
-                        + '<a href="http://www.antennasearch.com/HTML/search/search.php?address=' + o +'%2C+' + n + '" target="_blank" rel="noreferrer">Open in AntennaSearch.com</a><br />'
+        var insertText = `'<a href="javascript:copyToClipboard(\\'' + o + ',' + a + '\\');">Copy Coordinates</a><br />'
+                        + '<a href="http://www.antennasearch.com/HTML/search/search.php?address=' + o +'%2C+' + a + '" target="_blank" rel="noreferrer">Open in AntennaSearch.com</a><br />'
                         + `
-        var searchText = `  a =`
+        var searchText = `  n =`
         var startIndex = functionContents.indexOf(searchText)
 
         var newContents = functionContents.substr(0, startIndex + searchText.length) + insertText + functionContents.substr(startIndex + searchText.length);
 
-        newContents = newContents.replace(new RegExp(`<a href="https://www.google.com/maps/@.*15z`, 's'), `<a href="https://www.google.com/maps/search/?api=1&query=' + o + "," + n + '"`)
+        newContents = newContents.replace(new RegExp(`<a href="https://www.google.com/maps/@.*15z`, 's'), `<a href="https://www.google.com/maps/search/?api=1&query=' + o + "," + a + '"`)
         var newListener = new Function(func.arguments[0], newContents);
         map.listeners_.contextmenu[0] = newListener;
     }
