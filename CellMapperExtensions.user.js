@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CellMapper Extensions
 // @namespace    http://tampermonkey.net/
-// @version      0.1
+// @version      0.2
 // @description  Some stuff to make mapping towers faster and easier.
 // @author       eicednefrerdushdne
 // @match        https://www.cellmapper.net/map*
@@ -64,16 +64,18 @@
 
     window.circleLayers = []
 
-    var beautifyFunction = function (func) {
+    var beautifyFunction = function (func, skipPrettier) {
         var functionContents = func.toString()
 
         if (functionContents.startsWith('function(')) {
             functionContents = 'function xyz' + functionContents.substr(8);
         }
-        functionContents = prettier.format(functionContents, {
-            parser: "babel",
-            plugins: prettierPlugins,
-        });
+        if(!skipPrettier) {
+            functionContents = prettier.format(functionContents, {
+                parser: "babel",
+                plugins: prettierPlugins,
+            });
+        }
         var funcArgs = functionContents.substr(0, functionContents.indexOf(')'));
         funcArgs = funcArgs.substr(funcArgs.indexOf('(') + 1);
         funcArgs = funcArgs.split(',');
@@ -229,15 +231,15 @@
         var func = beautifyFunction(listener);
         var functionContents = func.body;
 
-        var insertText = `'<a href="javascript:copyToClipboard(\\'' + o + ',' + a + '\\');">Copy Coordinates</a><br />'
-                        + '<a href="http://www.antennasearch.com/HTML/search/search.php?address=' + o +'%2C+' + a + '" target="_blank" rel="noreferrer">Open in AntennaSearch.com</a><br />'
+        var insertText = `'<a href="javascript:copyToClipboard(\\'' + lat + ',' + long + '\\');">Copy Coordinates</a><br />'
+                        + '<a href="http://www.antennasearch.com/HTML/search/search.php?address=' + lat +'%2C+' + long + '" target="_blank" rel="noreferrer">Open in AntennaSearch.com</a><br />'
                         + `
-        var searchText = `  n =`
+        var searchText = `var theHTML =`
         var startIndex = functionContents.indexOf(searchText)
 
         var newContents = functionContents.substr(0, startIndex + searchText.length) + insertText + functionContents.substr(startIndex + searchText.length);
 
-        newContents = newContents.replace(new RegExp(`<a href="https://www.google.com/maps/@.*15z`, 's'), `<a href="https://www.google.com/maps/search/?api=1&query=' + o + "," + a + '"`)
+        newContents = newContents.replace(new RegExp(`<a href="https://www.google.com/maps/@.*15z`, 's'), `<a href="https://www.google.com/maps/search/?api=1&query=' + lat + "," + long + '"`)
         var newListener = new Function(func.arguments[0], newContents);
         map.listeners_.contextmenu[0] = newListener;
     }
@@ -248,7 +250,7 @@
         var newContents = functionContents;
 
         newContents = newContents.replace(`showTiles(MCC, MNC)`,
-            `tilesEnabled && showTiles(MCC, MNC)`);
+                                          `tilesEnabled && showTiles(MCC, MNC)`);
 
         var newfunc = new Function(func.arguments[0], newContents);
         window.showBandTilesAndTowers = newfunc;
@@ -260,19 +262,36 @@
         var functionContents = func.body;
 
         var newContents = functionContents;
+        var vars = {};
+        var varsRegexes = {
+            response: function(){return new RegExp(`success: function \\((?<var>\\w+)\\) {`)},
+            towerData: function(){return new RegExp(`var (?<var>\\w+) = handleResponse\\(` + vars.response +`\\);`)},
+            cellid: function(){return new RegExp(`for \\(var (?<var>\\w+) in ` + vars.towerData +`.cells\\) {`)}
+        }
+        // Find the correct variable names in case of minification. At the moment of this writing, it's not minified, but that could change.
+        for(var i in varsRegexes) {
+            var regex = varsRegexes[i]();
+            var match = functionContents.match(regex);
+            if(match.length) {
+                vars[i] = match.groups.var
+            } else {
+                console.warn('Unable to find current variable name for ' + i + ' in function getBaseStation. Please update the search regex.');
+            }
+        }
 
-        var insertText = `<li><a href='#' onclick='openGoogleEarth(" + ` + func.arguments[0] + ` + ", " + ` + func.arguments[1] + ` + ", \\"" + netType + "\\", \\"" + (r?.towerAttributes?.TOWER_NAME ?? ` + func.arguments[3] + `) + "\\")'>Open in Google Earth</a></li>`
+
+        var insertText = `<li><a href='#' onclick='openGoogleEarth(" + ` + func.arguments[0] + ` + ", " + ` + func.arguments[1] + ` + ", \\"" + netType + "\\", \\"" + (` + vars.towerData + `?.towerAttributes?.TOWER_NAME ?? ` + func.arguments[3] + `) + "\\")'>Open in Google Earth</a></li>`
         var searchText = new RegExp(`<li><a href='#' onclick='HandleDeleteTower`, 's')
         var startIndex = newContents.search(searchText)
 
         newContents = newContents.substr(0, startIndex) + insertText + newContents.substr(startIndex);
 
-        startIndex = newContents.search(new RegExp(`" \\+\\s+r.cells\\[w\\].PCI \\+`, 's'));
-        insertText = `<a href='#' onclick='$(\\"#pcipsc_search\\").val(\\"" + r.cells[w].PCI + "\\");handlePCIPSCSearch();'>`
+        startIndex = newContents.search(new RegExp(`" \\+\\s+` + vars.towerData + `.cells\\[` + vars.cellid + `\\].PCI \\+`, 's'));
+        insertText = `<a href='#' onclick='$(\\"#pcipsc_search\\").val(\\"" + ` + vars.towerData + `.cells[` + vars.cellid + `].PCI + "\\");handlePCIPSCSearch();'>`
 
         newContents = newContents.substr(0, startIndex) + insertText + newContents.substr(startIndex);
 
-        startIndex = newContents.search(new RegExp(`</td></tr>"\\),\\s+"LTE" == i &&`, 's'));
+        startIndex = newContents.indexOf('</td></tr>', startIndex + insertText.length);
         insertText = `</a>`
         if (startIndex !== -1) {
             newContents = newContents.substr(0, startIndex) + insertText + newContents.substr(startIndex);
@@ -289,7 +308,7 @@
 
 
         functionContents = functionContents.replace(`+ ")'>View</a></td>";`,
-            `+ ")'>(" + item['latitude'] + "," + item['longitude'] + ")</a><br /><a href='#' onclick='javascript:triggerTowerLocationConfirmation(\\"" + item['mcc'] + '", "' + item['mnc'] + '", "' + item['rat'] + '", "' + item['lac'] + '", "' + item['base'] + '", "' + item['latitude'] + '", "' + item['longitude'] + '"' + ")'>Restore this Location</a></td>";`);
+                                                    `+ ")'>(" + item['latitude'] + "," + item['longitude'] + ")</a><br /><a href='#' onclick='javascript:triggerTowerLocationConfirmation(\\"" + item['mcc'] + '", "' + item['mnc'] + '", "' + item['rat'] + '", "' + item['lac'] + '", "' + item['base'] + '", "' + item['latitude'] + '", "' + item['longitude'] + '"' + ")'>Restore this Location</a></td>";`);
 
         var newfunc = new Function(func.arguments[0], func.arguments[1], func.arguments[2], func.arguments[3], func.arguments[4], func.arguments[5], func.arguments[6], functionContents);
         window.getTowerOverrideHistory = newfunc;
@@ -428,23 +447,40 @@
 
     var fixPCISearch = function () {
         var functionContents = beautifyFunction(window.handlePCIPSCSearch)
+        var vars = {};
+        var varsRegexes = {
+            response: function(){return new RegExp(`success: function \\((?<var>\\w+)\\) {`)},
+            towerData: function(){return new RegExp(`var (?<var>\\w+) = handleResponse\\(` + vars.response +`\\);`)},
+            theID: function(){return new RegExp(`var (?<var>\\w+) = \\$\\("#pcipsc_search"\\).val\\(\\);`)}
+        }
+        // Find the correct variable names in case of minification. At the moment of this writing, it's not minified, but that could change.
+        for(var i in varsRegexes) {
+            var regex = varsRegexes[i]();
+            var match = functionContents.body.match(regex);
+            if(match.length) {
+                vars[i] = match.groups.var
+            } else {
+                console.warn('Unable to find current variable name for ' + i + ' in function handlePCIPSCSearch. Please update the search regex.');
+            }
+        }
+
 
         var newContents = functionContents.body;
         var insertText = `
-        var o = handleResponse(t);
+        var ` + vars.towerData + ` = handleResponse(` + vars.response + `);
 			window.filterIDs = [];
-            $.each(o, function(i,item){
+            $.each(` + vars.towerData + `, function(i,item){
                 filterIDs.push(item.siteID);
             });
             refreshTowers();
 `
-        var search = new RegExp(`var o = handleResponse.+onEscape: !0 }\\);`, 's');
+        var search = new RegExp(`var ` + vars.towerData + ` = handleResponse.+onEscape: (true|!0) }\\);`, 's');
 
         newContents = newContents.replace(search, insertText);
 
-        newContents = newContents.replace(`var e = $("#pcipsc_search").val();`,
-            `  var e = $("#pcipsc_search").val();
-   if(e === '') {
+        newContents = newContents.replace(`var ` + vars.theID + ` = $("#pcipsc_search").val();`,
+                                          `  var ` + vars.theID + ` = $("#pcipsc_search").val();
+   if(` + vars.theID + ` === '') {
      window.filterIDs = [];
      refreshTowers();
      return;
@@ -454,83 +490,118 @@
         window.handlePCIPSCSearch = newfunc;
     }
 
+
+    var fixgetUserProfile = function () {
+        var functionContents = beautifyFunction(window.getUserProfile, true);/*
+        var vars = {};
+        var varsRegexes = {
+            response: function(){return new RegExp(`success: function \\((?<var>\\w+)\\) {`)},
+            userData: function(){return new RegExp(`var (?<var>\\w+) = handleResponse\\(` + vars.response +`\\);`)}
+        }
+        // Find the correct variable names in case of minification. At the moment of this writing, it's not minified, but that could change.
+        for(var i in varsRegexes) {
+            var regex = varsRegexes[i]();
+            var match = functionContents.body.match(regex);
+            if(match.length) {
+                vars[i] = match.groups.var
+            } else {
+                console.warn('Unable to find current variable name for ' + i + ' in function getUserProfile. Please update the search regex.');
+            }
+        }
+*/
+
+        var newContents = functionContents.body;
+        var insertText = `
+var userData = handleResponse(response);
+             userData.premium = true;
+`
+        newContents = newContents.replace('var userData = handleResponse(response);', insertText);
+
+
+        var newfunc = new Function(newContents);
+        window.getUserProfile = newfunc;
+    }
+
+    fixgetUserProfile();
+
     window.toggleOnlyPrimaryTowers = function () {
         window.onlyPrimaryTowers = $('#onlyPrimaryTowers')[0].checked;
         refreshTowers();
     }
 
+
     // Modify the layer filter for the select interaction so it excludes the circle layers we've added.
     waitForTrue(function () { return map !== null && map.interactions.array_.some(el => { return el instanceof ol.interaction.Select }) },
-        function () {
-            var interaction = map.interactions.array_.find(el => { return el instanceof ol.interaction.Select });
-            interaction.layerFilter_ = function (l) { return !window.circleLayers.includes(l); };
-        });
+                function () {
+        var interaction = map.interactions.array_.find(el => { return el instanceof ol.interaction.Select });
+        interaction.layerFilter_ = function (l) { return !window.circleLayers.includes(l); };
+    });
 
     waitForTrue(function () { return window.prettier !== undefined && window.prettierPlugins !== undefined && window.prettierPlugins.babel !== undefined },
-        function () {
-
-            waitForTrue(function () { return map !== null && map.listeners_ !== null && map.listeners_.contextmenu !== null && map.listeners_.contextmenu[0] !== null },
-                function () { improveContextMenu(window.map) });
-
-            waitForTrue(function () { return window.toggleTrails !== undefined },
                 function () {
-                    fixToggleTrails();
-                });
 
-            waitForTrue(function () { return window.refreshTowers !== undefined },
-                function () {
-                    fixRefreshTowers();
-                });
+        waitForTrue(function () { return map !== null && map.listeners_ !== null && map.listeners_.contextmenu !== null && map.listeners_.contextmenu[0] !== null },
+                    function () { improveContextMenu(window.map) });
 
-            waitForTrue(function () { return window.getBaseStation !== undefined },
-                function () {
-                    improveSideBarMenu();
-                });
-
-            waitForTrue(function () { return window.handleTowerMove !== undefined },
-                function () {//fixHandleTowerMove();
-                });
-
-            waitForTrue(function () { return window.handlePCIPSCSearch !== undefined },
-                function () {
-                    fixPCISearch();
-                });
-
-            waitForTrue(function () { return window._renderUserStats !== undefined },
-                function () {
-                    window._renderUserStats = function (inUid, divName) {
-                        $("#" + divName).append(" <a href='#' onclick='getUserHistory(" + inUid + ", 0)'><span title='" + ("Points: " + userCache[inUid].totalPoints + ", Cells: " + userCache[inUid].totalCells + ", Towers modified: " + userCache[inUid].totalLocatedTowers) + ", ID: " + inUid + "'>" + userCache[inUid].userName + "</span>" + (userCache[inUid].premium ? "<span title='Premium User' style='color: gold'>&#x2605;</span></a>" : ""));
-                    };
-                });
-
-            waitForTrue(function () { return window.toggleshowMineOnly !== undefined },
-                function () {
-                    fixtoggleshowMineOnly();
-                });
-
-            waitForTrue(function () { return window.toggleShowUnverifiedOnly !== undefined },
-                function () {
-                    fixToggleShowUnverifiedOnly();
-                });
-
-            waitForTrue(function () { return window.getTowerOverrideHistory !== undefined },
-                function () {
-                    improveGetTowerOverrideHistory();
-                });
-
-            waitForTrue(function () { return window.showBandTilesAndTowers !== undefined },
-                function () {
-                    improveShowBandTilesAndTowers();
-                });
-
-            if (window.tilesEnabled === false) {
-                waitForTrue(function () {
-                    return window.tilesEnabled === false && map.getLayers().array_.some((function (t) { return null != t && null != t.get("name") && t.get("name") === "SignalTrails" }))
-                }, function () {
-                    window.clearLayer("SignalTrails");
-                });
-            }
+        waitForTrue(function () { return window.toggleTrails !== undefined },
+                    function () {
+            fixToggleTrails();
         });
+
+        waitForTrue(function () { return window.refreshTowers !== undefined },
+                    function () {
+            fixRefreshTowers();
+        });
+
+        waitForTrue(function () { return window.getBaseStation !== undefined },
+                    function () {
+            improveSideBarMenu();
+        });
+
+        waitForTrue(function () { return window.handleTowerMove !== undefined },
+                    function () {//fixHandleTowerMove();
+        });
+
+        waitForTrue(function () { return window.handlePCIPSCSearch !== undefined },
+                    function () {
+            fixPCISearch();
+        });
+
+        waitForTrue(function () { return window._renderUserStats !== undefined },
+                    function () {
+            window._renderUserStats = function (inUid, divName) {
+                $("#" + divName).append(" <a href='#' onclick='getUserHistory(" + inUid + ", 0)'><span title='" + ("Points: " + userCache[inUid].totalPoints + ", Cells: " + userCache[inUid].totalCells + ", Towers modified: " + userCache[inUid].totalLocatedTowers) + ", ID: " + inUid + "'>" + userCache[inUid].userName + "</span>" + (userCache[inUid].premium ? "<span title='Premium User' style='color: gold'>&#x2605;</span></a>" : ""));
+            };
+        });
+
+        waitForTrue(function () { return window.toggleshowMineOnly !== undefined },
+                    function () {
+            fixtoggleshowMineOnly();
+        });
+
+        waitForTrue(function () { return window.toggleShowUnverifiedOnly !== undefined },
+                    function () {
+            fixToggleShowUnverifiedOnly();
+        });
+
+        waitForTrue(function () { return window.getTowerOverrideHistory !== undefined },
+                    function () {
+            improveGetTowerOverrideHistory();
+        });
+
+        waitForTrue(function () { return window.showBandTilesAndTowers !== undefined },
+                    function () {
+            improveShowBandTilesAndTowers();
+        });
+
+        if (window.tilesEnabled === false) {
+            waitForTrue(function () {
+                return window.tilesEnabled === false && map.getLayers().array_.some((function (t) { return null != t && null != t.get("name") && t.get("name") === "SignalTrails" }))
+            }, function () {
+                window.clearLayer("SignalTrails");
+            });
+        }
+    });
 
     // Add keyboard shortcuts
     function doc_keyUp(e) {
@@ -580,9 +651,9 @@
     });*/
 
     waitForTrue(function () { return $(".nav-link.nav-linkpage-scroll[href='https://cellmapper.freshdesk.com/']").length == 1 },
-        function () {
-            var supportLink = $(".nav-link.nav-linkpage-scroll[href='https://cellmapper.freshdesk.com/']").parent();
-            $(`
+                function () {
+        var supportLink = $(".nav-link.nav-linkpage-scroll[href='https://cellmapper.freshdesk.com/']").parent();
+        $(`
         <li class="nav-item">
           <label class="nav-link nav-linkpage-scroll">
             <input id="showMineOnly2" class="nav-logos fas" type="checkbox" onclick="toggleshowMineOnly()" />
@@ -624,45 +695,45 @@
         </li>
         `).insertAfter(supportLink);
 
-            // I'm lazy: https://www.w3schools.com/howto/howto_js_trigger_button_enter.asp
-            // Get the input field
-            var input = document.getElementById("locator_search");
+        // I'm lazy: https://www.w3schools.com/howto/howto_js_trigger_button_enter.asp
+        // Get the input field
+        var input = document.getElementById("locator_search");
 
-            // Execute a function when the user releases a key on the keyboard
-            input.addEventListener("keyup", function (event) {
-                // Number 13 is the "Enter" key on the keyboard
-                if (event.keyCode === 13) {
-                    // Cancel the default action, if needed
-                    event.preventDefault();
-                    try {
-                        var input = document.getElementById("locator_search").value;
-                        if (input.startsWith('!')) {
-                            window.excludeFilterTowerMover = true;
-                            input = input.substring(1);
-                        } else {
-                            window.excludeFilterTowerMover = false;
-                        }
-
-                        input = input.split(',').filter(function (x, i) { return x !== ''; });;
-                        filterTowerMover = []
-                        for (var a in input) {
-                            filterTowerMover.push(parseInt(input[a]))
-                        }
-
-                        // Trigger the button element with a click
-                        refreshTowers();
-                    } catch {
-                        // who cares
+        // Execute a function when the user releases a key on the keyboard
+        input.addEventListener("keyup", function (event) {
+            // Number 13 is the "Enter" key on the keyboard
+            if (event.keyCode === 13) {
+                // Cancel the default action, if needed
+                event.preventDefault();
+                try {
+                    var input = document.getElementById("locator_search").value;
+                    if (input.startsWith('!')) {
+                        window.excludeFilterTowerMover = true;
+                        input = input.substring(1);
+                    } else {
+                        window.excludeFilterTowerMover = false;
                     }
+
+                    input = input.split(',').filter(function (x, i) { return x !== ''; });;
+                    filterTowerMover = []
+                    for (var a in input) {
+                        filterTowerMover.push(parseInt(input[a]))
+                    }
+
+                    // Trigger the button element with a click
+                    refreshTowers();
+                } catch {
+                    // who cares
                 }
-            });
-
-
-            window.togglingShowUnverifiedOnly = window.togglingTrails = true;
-            $("#doTrails2").prop('checked', tilesEnabled);
-            $("#showUnverifiedOnly2").prop('checked', showUnverifiedOnly);
-            window.togglingShowUnverifiedOnly = window.togglingTrails = false;
+            }
         });
+
+
+        window.togglingShowUnverifiedOnly = window.togglingTrails = true;
+        $("#doTrails2").prop('checked', tilesEnabled);
+        $("#showUnverifiedOnly2").prop('checked', showUnverifiedOnly);
+        window.togglingShowUnverifiedOnly = window.togglingTrails = false;
+    });
 
     function addGlobalStyle(css) {
         var head, style;
@@ -679,5 +750,22 @@
         max-width:800px;
     }
 `);
+
+    var removeAdblockBlock = function () {
+        //debugger;
+        //userCache[userID].premium = true;
+        /*
+        jQuery('body > div.bootbox.modal.fade.show').remove()
+        jQuery('body > div.modal-backdrop.fade.show').remove()
+        var dialogTextItem = jQuery("span.blink:contains('Ad-blocker Detected')");
+        if(dialogTextItem.length === 1) {
+            dialogTextItem.parents()[2].remove()
+        }
+        setTimeout(() => {
+            removeAdblockBlock();
+        }, 1000);
+*/
+    };
+    removeAdblockBlock();
 
 })();
